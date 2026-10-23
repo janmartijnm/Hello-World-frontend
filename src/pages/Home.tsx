@@ -2,7 +2,7 @@ import { Link } from 'react-router';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import { Cable, Handshake, MapPin, Server } from 'lucide-react';
 
-import { api, ApiError, fetchAll, getAuth, type Page } from '../api';
+import { api, ApiError, fetchAll, getAuth, serverLabel, type Page } from '../api';
 import { SiteMap } from '../components/SiteMap';
 import { Card, ErrorState, PageHeader, Spinner } from '../components/ui';
 import type { Site } from '../types';
@@ -36,7 +36,7 @@ export function Home() {
 
   return (
     <>
-      <PageHeader title="Overview" subtitle={`Logged in as ${getAuth()?.displayName}`} />
+      <PageHeader title="Overview" subtitle={`Logged in as ${getAuth()?.displayName} on ${serverLabel(getAuth()?.server ?? '')}`} />
 
       <div className="stats">
         {STATS.map((s, i) => {

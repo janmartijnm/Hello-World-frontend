@@ -1,11 +1,25 @@
 import { useState } from 'react';
 import { LogIn, X } from 'lucide-react';
 
-import { config, forgetServer, isTauri, login, recentServers, type RecentServer } from '../api';
+import {
+  cancelAdding,
+  config,
+  forgetServer,
+  isTauri,
+  login,
+  recentServers,
+  serverLabel,
+  switchTo,
+  type AuthState,
+  type RecentServer,
+} from '../api';
 
-export function Login() {
+export function Login({ state }: { state: AuthState }) {
   const [recent, setRecent] = useState<RecentServer[]>(recentServers);
-  const last = recent[0];
+  const loggedIn = (server: string) => state.sessions.some((a) => a.server === server);
+  // Suggest the server whose session expired, else the most recent one not logged in to yet
+  const last =
+    recent.find((r) => r.server === state.expiredServer) ?? recent.find((r) => !loggedIn(r.server)) ?? (state.adding ? undefined : recent[0]);
   const [server, setServer] = useState(last?.server ?? '');
   const [username, setUsername] = useState(last?.username ?? '');
   const [password, setPassword] = useState('');
@@ -38,7 +52,13 @@ export function Login() {
       >
         <img src="/favicon.svg" alt="" width={44} height={44} />
         <h1>NetBox Explorer</h1>
-        <p className="muted">Log in to a NetBox server with your NetBox account.</p>
+        <p className="muted">
+          {state.expiredServer
+            ? `Your login on ${serverLabel(state.expiredServer)} has expired. Log in again.`
+            : state.adding
+              ? 'Log in to one more NetBox server. You stay logged in to the others.'
+              : 'Log in to a NetBox server with your NetBox account.'}
+        </p>
 
         {recent.length > 0 && (
           <div className="recent">
@@ -46,8 +66,9 @@ export function Login() {
             {recent.map((r) => (
               <div key={r.server} className={r.server === server ? 'recent-item active' : 'recent-item'}>
                 <button type="button" className="link" onClick={() => pick(r)} title={`${r.username} on ${r.server}`}>
-                  {r.server.replace(/^https?:\/\//, '')}
+                  {serverLabel(r.server)}
                 </button>
+                {loggedIn(r.server) && <span className="muted small">logged in</span>}
                 <button
                   type="button"
                   className="icon-btn"
@@ -105,6 +126,21 @@ export function Login() {
         <button className="btn primary" type="submit" disabled={busy}>
           <LogIn size={16} /> {busy ? 'Logging in…' : 'Log in'}
         </button>
+        {state.adding && state.active && (
+          <button type="button" className="btn" onClick={cancelAdding}>
+            Back to {serverLabel(state.active.server)}
+          </button>
+        )}
+        {!state.active && state.sessions.length > 0 && (
+          <div className="recent">
+            <span className="muted small">Or continue with</span>
+            {state.sessions.map((a) => (
+              <button key={a.server} type="button" className="link" onClick={() => switchTo(a.server)}>
+                {serverLabel(a.server)} ({a.displayName})
+              </button>
+            ))}
+          </div>
+        )}
         <p className="muted small">
           Read-only: you see what your NetBox permissions allow. You stay logged in for {config.tokenHours} hours. To
           change data, use NetBox itself.

@@ -13,7 +13,7 @@ export const isTauri = '__TAURI_INTERNALS__' in window;
 export const config = {
   /** NetBox's web interface, for "Open in NetBox" links: the server the user logged in to. */
   get netboxUrl(): string {
-    return current?.server || '';
+    return stored.sessions.find((a) => a.server === stored.active)?.server || '';
   },
   mapTiles: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
   mapAttribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
@@ -84,7 +84,7 @@ function request(server: string, allowSelfSigned: boolean, path: string, init: R
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// Login
+// Login: one session (read-only token) per NetBox server; one of them is active
 
 export interface Auth {
   server: string;
@@ -95,41 +95,127 @@ export interface Auth {
   displayName: string;
 }
 
-const AUTH_KEY = 'netbox-explorer.auth';
+interface Stored {
+  active: string | null;
+  sessions: Auth[];
+}
 
-function readAuth(): Auth | null {
+/** What the screens need: the active session, all sessions, and whether the login screen is wanted. */
+export interface AuthState {
+  active: Auth | null;
+  sessions: Auth[];
+  /** Logging in to one more server (the login screen is shown on top of the active session) */
+  adding: boolean;
+  /** Server whose session just expired, to fill in on the login screen */
+  expiredServer: string | null;
+}
+
+const AUTH_KEY = 'netbox-explorer.sessions';
+const OLD_AUTH_KEY = 'netbox-explorer.auth';
+
+const valid = (a: Auth) => new Date(a.expires) > new Date();
+
+function readStored(): Stored {
   try {
-    const auth = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null') as Auth | null;
-    if (auth && new Date(auth.expires) > new Date()) return auth;
+    const stored = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null') as Stored | null;
+    if (stored) {
+      // The active server's login expired while the app was closed: ask to log in to it again
+      const lost = stored.sessions.find((a) => a.server === stored.active && !valid(a));
+      if (lost) expiredServer = lost.server;
+      return { active: lost ? null : stored.active, sessions: stored.sessions.filter(valid) };
+    }
+    // Version 0.1 kept a single session
+    const old = JSON.parse(localStorage.getItem(OLD_AUTH_KEY) || 'null') as Auth | null;
+    localStorage.removeItem(OLD_AUTH_KEY);
+    if (old?.server && valid(old)) return { active: old.server, sessions: [old] };
   } catch {
     // Storage unavailable or damaged: log in again
   }
-  return null;
+  return { active: null, sessions: [] };
 }
 
-let current: Auth | null = readAuth();
+let adding = false;
+let expiredServer: string | null = null;
+let stored = readStored();
+let snapshot: AuthState = buildSnapshot();
 const listeners = new Set<() => void>();
 
-export function getAuth(): Auth | null {
-  if (current && new Date(current.expires) <= new Date()) setAuth(null);
-  return current;
+function buildSnapshot(): AuthState {
+  const active = stored.sessions.find((a) => a.server === stored.active) ?? null;
+  return { active, sessions: stored.sessions, adding, expiredServer };
 }
 
-function setAuth(auth: Auth | null) {
-  current = auth;
-  try {
-    if (auth) localStorage.setItem(AUTH_KEY, JSON.stringify(auth));
-    else localStorage.removeItem(AUTH_KEY);
-  } catch {
-    // Not persisted; this tab still works
+function save(next: Stored) {
+  stored = next;
+  // Signed out of the active server: another logged-in server becomes active (null = show the login screen)
+  if (stored.active && !stored.sessions.some((a) => a.server === stored.active)) {
+    stored.active = stored.sessions[0]?.server ?? null;
   }
+  try {
+    localStorage.setItem(AUTH_KEY, JSON.stringify(stored));
+  } catch {
+    // Not persisted; this window still works
+  }
+  changed();
+}
+
+function changed() {
+  snapshot = buildSnapshot();
   listeners.forEach((fn) => fn());
+}
+
+export function getAuthState(): AuthState {
+  return snapshot;
+}
+
+/** Drop sessions that expired while the app was open (every 30 s, and before each request). */
+function checkExpiry() {
+  if (!stored.sessions.some((a) => !valid(a))) return;
+  const lost = stored.sessions.find((a) => !valid(a) && a.server === stored.active);
+  if (lost) expiredServer = lost.server;
+  save({ active: lost ? null : stored.active, sessions: stored.sessions.filter(valid) });
+}
+setInterval(checkExpiry, 30_000);
+
+/** The active session (or null). */
+export function getAuth(): Auth | null {
+  return getAuthState().active;
 }
 
 export function onAuthChange(fn: () => void): () => void {
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
+
+/** Make another logged-in server the active one. */
+export function switchTo(server: string) {
+  if (!stored.sessions.some((a) => a.server === server)) return;
+  adding = false;
+  expiredServer = null;
+  save({ ...stored, active: server });
+}
+
+/** Show the login screen to add a server, keeping the current sessions. */
+export function startAdding() {
+  adding = true;
+  changed();
+}
+
+export function cancelAdding() {
+  adding = false;
+  expiredServer = null;
+  changed();
+}
+
+/** A short, stable colour per server, to tell them apart in the sidebar. */
+export function serverColor(server: string): string {
+  const palette = ['#2f6fde', '#e8743b', '#19a979', '#d64e9a', '#945ecf', '#13a4b4', '#bf9d00', '#6f7d8c'];
+  let h = 0;
+  for (const c of server) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return palette[h % palette.length];
+}
+
+export const serverLabel = (server: string) => server.replace(/^https?:\/\//, '');
 
 export async function login(serverInput: string, username: string, password: string, allowSelfSigned: boolean): Promise<void> {
   let server: string;
@@ -171,22 +257,37 @@ export async function login(serverInput: string, username: string, password: str
   // NetBox 4.5+ (v2) tokens are "nbt_<key>.<token>" and use "Bearer"; older ones are a plain key with "Token"
   const token = data.version === 2 ? `Bearer nbt_${data.key}.${data.token}` : `Token ${data.key}`;
   rememberServer({ server, username, allowSelfSigned });
-  setAuth({
+  const auth: Auth = {
     server,
     allowSelfSigned,
     token,
     expires: data.expires || expires,
     username,
     displayName: data.user?.display || username,
-  });
+  };
+  adding = false;
+  expiredServer = null;
+  // Logging in to a server again replaces its session
+  save({ active: server, sessions: [...stored.sessions.filter((a) => a.server !== server), auth] });
 }
 
 /**
- * Forgets the token. It stays valid in NetBox until it expires: being read-only, it may not delete itself (and
- * nothing else can read it, it only lived in this browser).
+ * Forgets a server's token (default: the active one); another logged-in server becomes active. The token stays
+ * valid in NetBox until it expires: being read-only, it may not delete itself.
  */
-export function logout() {
-  setAuth(null);
+export function logout(server = stored.active) {
+  save({ ...stored, sessions: stored.sessions.filter((a) => a.server !== server) });
+}
+
+export function logoutAll() {
+  save({ active: null, sessions: [] });
+}
+
+/** The active session's token expired or was removed in NetBox: ask to log in to it again. */
+function sessionLost(server: string) {
+  const wasActive = server === stored.active;
+  if (wasActive) expiredServer = server;
+  save({ active: wasActive ? null : stored.active, sessions: stored.sessions.filter((a) => a.server !== server) });
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -225,6 +326,7 @@ function query(params?: Params): string {
 }
 
 export async function api<T>(path: string, params?: Params): Promise<T> {
+  checkExpiry();
   const auth = getAuth();
   if (!auth) throw new ApiError(401, 'Not logged in');
   const response = await request(auth.server, auth.allowSelfSigned, `${path}${query(params)}`, {
@@ -238,7 +340,7 @@ export async function api<T>(path: string, params?: Params): Promise<T> {
       // Not JSON
     }
     // An expired or removed token: back to the login page
-    if ((response.status === 401 || response.status === 403) && /token/i.test(detail)) setAuth(null);
+    if ((response.status === 401 || response.status === 403) && /token/i.test(detail)) sessionLost(auth.server);
     throw new ApiError(response.status, detail);
   }
   return response.json();

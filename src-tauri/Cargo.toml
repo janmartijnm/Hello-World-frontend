@@ -1,6 +1,6 @@
 [package]
 name = "netbox-explorer"
-version = "0.1.0"
+version = "0.2.0"
 description = "NetBox Explorer: a read-only desktop frontend for any NetBox instance"
 edition = "2021"
 publish = false

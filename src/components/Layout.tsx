@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router';
+import { useEffect, useState, useSyncExternalStore } from 'react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useQueries } from '@tanstack/react-query';
-import { Boxes, ExternalLink, Handshake, LayoutDashboard, LogOut, MapPin, Menu, Moon, Search, Server, Sun, User, X } from 'lucide-react';
+import { Boxes, ExternalLink, Handshake, LayoutDashboard, LogOut, MapPin, Menu, Moon, Search, Server, Sun, X } from 'lucide-react';
 
-import { api, ApiError, config, getAuth, logout, type Page } from '../api';
+import { api, ApiError, config, getAuthState, logout, logoutAll, onAuthChange, serverLabel, type Page } from '../api';
+import { InstanceSwitcher } from './InstanceSwitcher';
 import { CommandPalette } from './CommandPalette';
 
 type Theme = 'light' | 'dark';
@@ -45,7 +46,8 @@ export function Layout() {
   const [palette, setPalette] = useState(false);
   const [menu, setMenu] = useState(false);
   const location = useLocation();
-  const auth = getAuth();
+  const { active: auth, sessions } = useSyncExternalStore(onAuthChange, getAuthState);
+  const navigate = useNavigate();
   const nav = useVisibleNav();
 
   useEffect(() => {
@@ -83,6 +85,7 @@ export function Layout() {
             <X size={18} />
           </button>
         </div>
+        <InstanceSwitcher />
         <button type="button" className="side-search" onClick={() => setPalette(true)}>
           <span>Search</span>
           <Search size={14} />
@@ -101,16 +104,29 @@ export function Layout() {
           <button type="button" className="nav-link" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}>
             {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />} {theme === 'dark' ? 'Light theme' : 'Dark theme'}
           </button>
-          <span className="nav-link static" title={`Logged in as ${auth?.username} on ${auth?.server}`}>
-            <User size={16} />
-            <span className="who">
-              {auth?.displayName}
-              <small>{auth?.server.replace(/^https?:\/\//, '')}</small>
-            </span>
-          </span>
-          <button type="button" className="nav-link" onClick={logout}>
-            <LogOut size={16} /> Sign out / switch server
+          <button
+            type="button"
+            className="nav-link"
+            onClick={() => {
+              navigate('/');
+              logout();
+            }}
+            title={`Sign out of ${auth?.server}`}
+          >
+            <LogOut size={16} /> Sign out of {serverLabel(auth?.server ?? '')}
           </button>
+          {sessions.length > 1 && (
+            <button
+              type="button"
+              className="nav-link"
+              onClick={() => {
+                navigate('/');
+                logoutAll();
+              }}
+            >
+              <LogOut size={16} /> Sign out of all ({sessions.length})
+            </button>
+          )}
         </nav>
       </aside>
       {menu && <div className="sidebar-backdrop" onClick={() => setMenu(false)} />}

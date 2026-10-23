@@ -417,3 +417,37 @@ a.stat:hover { background: var(--row-hover); text-decoration: none; }
 .login-card label.check { flex-direction: row; align-items: flex-start; gap: 6px; }
 .login-card label.check input { width: auto; height: auto; margin-top: 2px; }
 .login-card label.check span { color: var(--text); }
+
+/* ---------- NetBox instance switcher (sidebar) ---------- */
+
+.instance { position: relative; margin: 0 12px 10px; }
+.instance-current, .instance-pick {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 8px; border: 1px solid transparent; border-radius: var(--radius);
+  background: var(--side-input); color: var(--side-text); cursor: pointer; text-align: left;
+}
+.instance-current:hover { border-color: var(--side-muted); }
+.instance-current svg { color: var(--side-muted); flex-shrink: 0; }
+.instance-dot { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+.instance-text { display: flex; flex-direction: column; min-width: 0; flex: 1; line-height: 1.25; }
+.instance-text strong, .instance-text small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.instance-text small { color: var(--side-muted); font-size: 10px; }
+.instance-menu {
+  position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 1600;
+  background: var(--surface); color: var(--text); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 6px 24px rgb(0 0 0 / 30%); padding: 4px 0;
+}
+.instance-menu-title { padding: 4px 10px; font-size: 11px; color: var(--muted); font-weight: bold; }
+.instance-item { display: flex; align-items: center; gap: 2px; padding-right: 4px; }
+.instance-item .instance-pick { min-width: 0; }
+.instance-item .icon-btn { flex-shrink: 0; }
+.instance-item .instance-pick { background: none; color: var(--text); }
+.instance-item .instance-pick:hover, .instance-item.active .instance-pick { background: var(--row-hover); }
+.instance-item .instance-text small { color: var(--muted); }
+.instance-item .instance-pick svg { color: var(--accent); }
+.instance-add {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin-top: 4px;
+  padding: 7px 10px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--accent); cursor: pointer; text-align: left;
+}
+.instance-add:hover { background: var(--row-hover); }
+.login-card .recent .link { text-align: left; }

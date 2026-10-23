@@ -12,8 +12,13 @@ to NetBox in [hello-world](https://github.com/janmartijnm/hello-world)
 
 - **Log in to any NetBox**: type the server address (`netbox.example.com` or
   `https://netbox.example.com:8443`) with your NetBox username and password.
-  Recently used servers are listed for one click; switch servers with
-  **Sign out / switch server**.
+  Recently used servers are listed for one click.
+- **Several NetBox instances at once**: the box at the top of the sidebar shows
+  the NetBox you are looking at (with a colour per server). Click it to switch
+  to another one you are logged in to (no password needed), to sign out of one,
+  or to **Add NetBox…**. Each server keeps its own login and its own data;
+  switching keeps you in the same section (e.g. Sites). When a login expires,
+  the app asks to log in to that server again or to continue with another.
 - **Search everything** (Ctrl+K / ⌘K or `/`): sites, devices, interfaces,
   assets, IP addresses, services, prefixes and circuits.
 - **Sites** with filters, table or map; **Devices** with interfaces, IPs,
@@ -48,8 +53,9 @@ hidden.
 - **Your NetBox permissions apply**: you see exactly what your NetBox account
   may see.
 - The password is only sent to NetBox to get the token and is not stored. The
-  token and the list of recent servers are kept in the app's own storage on
-  your Mac. **Sign out** forgets the token; NetBox keeps it until it expires (a
+  tokens (one per server you are logged in to) and the list of recent servers
+  are kept in the app's own storage on your Mac. **Sign out** forgets the
+  token; NetBox keeps it until it expires (a
   read-only token can't delete itself). It is listed in NetBox as "NetBox
   Explorer login" under the user's API tokens, where an administrator can
   remove it.

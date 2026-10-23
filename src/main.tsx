@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { openUrl } from '@tauri-apps/plugin-opener';
 
-import { ApiError, getAuth, isTauri, onAuthChange } from './api';
+import { ApiError, getAuthState, isTauri, onAuthChange } from './api';
 import { Layout } from './components/Layout';
 import { AssetDetail } from './pages/AssetDetail';
 import { Assets } from './pages/Assets';
@@ -21,39 +21,58 @@ import { SiteDetail } from './pages/SiteDetail';
 import { Sites } from './pages/Sites';
 import './styles.css';
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
-      // Don't retry what NetBox refused (no permission, not found)
-      retry: (count, error) => !(error instanceof ApiError) && count < 2,
-    },
-  },
-});
+// One data cache per NetBox server: data of one server never shows while looking at another, and switching back
+// to a server shows its pages straight away
+const clients = new Map<string, QueryClient>();
+
+function clientFor(server: string): QueryClient {
+  let client = clients.get(server);
+  if (!client) {
+    client = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 60_000,
+          refetchOnWindowFocus: false,
+          // Don't retry what NetBox refused (no permission, not found)
+          retry: (count, error) => !(error instanceof ApiError) && count < 2,
+        },
+      },
+    });
+    clients.set(server, client);
+  }
+  return client;
+}
 
 function App() {
-  const auth = useSyncExternalStore(onAuthChange, getAuth);
-  if (!auth) {
-    queryClient.clear();
-    return <Login />;
+  const state = useSyncExternalStore(onAuthChange, getAuthState);
+
+  // Forget the data of servers that were signed out of
+  for (const [server, client] of clients) {
+    if (!state.sessions.some((a) => a.server === server)) {
+      client.clear();
+      clients.delete(server);
+    }
   }
+
+  if (!state.active || state.adding) return <Login state={state} />;
   return (
-    <Routes>
-      <Route element={<Layout />}>
-        <Route index element={<Home />} />
-        <Route path="search" element={<SearchPage />} />
-        <Route path="sites" element={<Sites />} />
-        <Route path="sites/:id" element={<SiteDetail />} />
-        <Route path="devices" element={<Devices />} />
-        <Route path="devices/:id" element={<DeviceDetail />} />
-        <Route path="services" element={<Services />} />
-        <Route path="services/:id" element={<ServiceDetail />} />
-        <Route path="assets" element={<Assets />} />
-        <Route path="assets/:id" element={<AssetDetail />} />
-        <Route path="*" element={<NotFound />} />
-      </Route>
-    </Routes>
+    <QueryClientProvider client={clientFor(state.active.server)} key={state.active.server}>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route index element={<Home />} />
+          <Route path="search" element={<SearchPage />} />
+          <Route path="sites" element={<Sites />} />
+          <Route path="sites/:id" element={<SiteDetail />} />
+          <Route path="devices" element={<Devices />} />
+          <Route path="devices/:id" element={<DeviceDetail />} />
+          <Route path="services" element={<Services />} />
+          <Route path="services/:id" element={<ServiceDetail />} />
+          <Route path="assets" element={<Assets />} />
+          <Route path="assets/:id" element={<AssetDetail />} />
+          <Route path="*" element={<NotFound />} />
+        </Route>
+      </Routes>
+    </QueryClientProvider>
   );
 }
 
@@ -69,10 +88,8 @@ if (isTauri) {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <QueryClientProvider client={queryClient}>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </QueryClientProvider>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
   </StrictMode>,
 );
