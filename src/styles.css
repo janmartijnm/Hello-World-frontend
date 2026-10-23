@@ -451,3 +451,13 @@ a.stat:hover { background: var(--row-hover); text-decoration: none; }
 }
 .instance-add:hover { background: var(--row-hover); }
 .login-card .recent .link { text-align: left; }
+
+/* ---------- Login: per-instance settings ---------- */
+
+.recent-item .link { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recent-tags { display: inline-flex; align-items: center; gap: 4px; }
+.login-card label > span svg { vertical-align: -2px; }
+.login-card label small { line-height: 1.3; }
+.field-group { display: flex; flex-direction: column; gap: 2px; }
+.login-card .segmented { display: flex; }
+.login-card .segmented button { flex: 1; justify-content: center; height: 28px; }

@@ -2,7 +2,10 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useLocation, useNavigate } from 'react-router';
 import { Check, ChevronsUpDown, LogOut, Plus } from 'lucide-react';
 
-import { getAuthState, logout, onAuthChange, serverColor, serverLabel, startAdding, switchTo } from '../api';
+import { getAuthState, logout, onAuthChange, serverColor, serverLabel, startAdding, switchTo, type Auth } from '../api';
+
+/** "jan · SSO · via proxy" */
+const who = (a: Auth) => [a.displayName, a.mode === 'session' && 'SSO', a.proxy && 'via proxy'].filter(Boolean).join(' · ');
 
 /**
  * The NetBox servers you are logged in to, at the top of the sidebar: switch between them, sign out of one, or log
@@ -62,7 +65,7 @@ export function InstanceSwitcher() {
         <i className="instance-dot" style={{ background: serverColor(active.server) }} />
         <span className="instance-text">
           <strong>{serverLabel(active.server)}</strong>
-          <small>{active.displayName}</small>
+          <small>{who(active)}</small>
         </span>
         <ChevronsUpDown size={14} />
       </button>
@@ -75,7 +78,7 @@ export function InstanceSwitcher() {
                 <i className="instance-dot" style={{ background: serverColor(a.server) }} />
                 <span className="instance-text">
                   <strong>{serverLabel(a.server)}</strong>
-                  <small>{a.displayName}</small>
+                  <small>{who(a)}</small>
                 </span>
                 {a.server === active.server && <Check size={14} />}
               </button>

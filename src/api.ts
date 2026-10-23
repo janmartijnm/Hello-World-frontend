@@ -1,11 +1,15 @@
 /**
  * NetBox REST API access for the desktop app. The user picks a NetBox server on the login screen and logs in with
- * their own account; the app gets a personal, read-only API token that expires, so NetBox's permissions decide what
- * they see.
+ * their own account, so NetBox's permissions decide what they see:
+ * - username and password: the app gets a personal API token that is read-only (enforced by NetBox) and expires;
+ * - single sign-on (e.g. Keycloak): the user signs in on NetBox's own login page in a separate window; the app then
+ *   reads with that NetBox session, through its native code, which can only send GET requests (src-tauri/src/sso.rs).
+ * Each instance can be reached through its own SOCKS5 proxy (everything for that instance then goes through it).
  *
  * In the app, requests go through Tauri's HTTP client (in Rust), so NetBox needs no CORS settings. In a plain
  * browser (npm run dev), they go to /api/ on the dev server, which forwards them to NETBOX_UPSTREAM.
  */
+import { invoke } from '@tauri-apps/api/core';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 
 export const isTauri = '__TAURI_INTERNALS__' in window;
@@ -39,25 +43,38 @@ export function normalizeServer(input: string): string {
   return url.origin + url.pathname.replace(/\/+$/, '');
 }
 
-// Servers used before, newest first, for the login screen
+export type AuthMethod = 'password' | 'sso';
+
+// NetBox instances used before, newest first, with their settings, for the login screen
 export interface RecentServer {
   server: string;
   username: string;
   allowSelfSigned: boolean;
+  auth: AuthMethod;
+  /** SOCKS5 proxy "host:port" through which this instance is reached; empty: direct */
+  proxy: string;
 }
 
 const RECENT_KEY = 'netbox-explorer.recent';
 
 export function recentServers(): RecentServer[] {
   try {
-    return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
+    const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') as Partial<RecentServer>[];
+    // Entries from version 0.2 have no auth method or proxy yet
+    return list.map((r) => ({
+      server: r.server ?? '',
+      username: r.username ?? '',
+      allowSelfSigned: r.allowSelfSigned ?? false,
+      auth: r.auth ?? 'password',
+      proxy: r.proxy ?? '',
+    }));
   } catch {
     return [];
   }
 }
 
 function rememberServer(entry: RecentServer) {
-  const list = [entry, ...recentServers().filter((r) => r.server !== entry.server)].slice(0, 8);
+  const list = [entry, ...recentServers().filter((r) => r.server !== entry.server)].slice(0, 12);
   try {
     localStorage.setItem(RECENT_KEY, JSON.stringify(list));
   } catch {
@@ -73,14 +90,70 @@ export function forgetServer(server: string) {
   }
 }
 
-/** A request to NetBox: through the app's HTTP client, or the dev server in a browser. */
-function request(server: string, allowSelfSigned: boolean, path: string, init: RequestInit = {}): Promise<Response> {
+/** "proxy.example.com:1080" checked; returns it trimmed, or '' for none. */
+export function normalizeProxy(input: string): string {
+  const p = input.trim().replace(/^socks5h?:\/\//i, '');
+  if (!p) return '';
+  if (!/^[A-Za-z0-9.\-]+:\d{1,5}$/.test(p) && !/^\[[0-9a-fA-F:]+\]:\d{1,5}$/.test(p)) {
+    throw new Error('Write the SOCKS5 proxy as host:port, e.g. proxy.example.com:1080.');
+  }
+  return p;
+}
+
+/** How to reach an instance, and with which login. */
+interface Connection {
+  server: string;
+  allowSelfSigned: boolean;
+  proxy?: string;
+  mode?: 'token' | 'session';
+  cookie?: string;
+}
+
+interface SessionAnswer {
+  status: number;
+  body: string;
+}
+
+/**
+ * A request to NetBox: through the app's HTTP client (with the instance's proxy), through the native read-only
+ * session client for single sign-on, or through the dev server in a browser.
+ */
+async function request(conn: Connection, path: string, init: RequestInit = {}): Promise<Response> {
   if (!isTauri) return fetch(`/api/${path}`, init);
-  return tauriFetch(`${server}/api/${path}`, {
+  if (conn.mode === 'session') {
+    if (init.method && init.method !== 'GET') throw new Error('Read-only: this login can only read.');
+    const answer = await invoke<SessionAnswer>('session_get', {
+      server: conn.server,
+      path: `api/${path}`,
+      cookie: conn.cookie ?? '',
+      proxy: conn.proxy || null,
+      allowSelfSigned: conn.allowSelfSigned,
+    });
+    return new Response(answer.body, { status: answer.status, headers: { 'Content-Type': 'application/json' } });
+  }
+  return tauriFetch(`${conn.server}/api/${path}`, {
     ...init,
     connectTimeout: 15_000,
-    ...(allowSelfSigned ? { danger: { acceptInvalidCerts: true, acceptInvalidHostnames: false } } : {}),
+    // socks5h: host names are resolved by the proxy (they often exist only behind it)
+    ...(conn.proxy ? { proxy: { all: `socks5h://${conn.proxy}` } } : {}),
+    ...(conn.allowSelfSigned ? { danger: { acceptInvalidCerts: true, acceptInvalidHostnames: false } } : {}),
   });
+}
+
+/** A readable message for a connection error, with hints for certificates and proxies. */
+function reachError(server: string, conn: Connection, e: unknown): Error {
+  const text = String(e);
+  if (/certificate|ssl|tls/i.test(text)) {
+    return new Error(`The server's certificate is not trusted. If it is self-signed, tick "Allow a self-signed certificate". (${text})`);
+  }
+  const hints = [
+    conn.proxy && ` Check that the proxy ${conn.proxy} is reachable and allows this connection.`,
+    !conn.proxy && ' If this NetBox is only reachable through a SOCKS5 proxy, set the proxy.',
+    server.startsWith('https:') && !conn.allowSelfSigned && ' If the server uses a self-signed certificate, tick "Allow a self-signed certificate".',
+  ]
+    .filter(Boolean)
+    .join('');
+  return new Error(`Can't reach ${server}.${hints} (${text})`);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
@@ -89,6 +162,12 @@ function request(server: string, allowSelfSigned: boolean, path: string, init: R
 export interface Auth {
   server: string;
   allowSelfSigned: boolean;
+  /** SOCKS5 proxy "host:port", or '' */
+  proxy: string;
+  /** token: read-only API token (password login); session: NetBox session from single sign-on */
+  mode: 'token' | 'session';
+  /** Session cookie (single sign-on) */
+  cookie?: string;
   token: string;
   expires: string;
   username: string;
@@ -119,6 +198,7 @@ function readStored(): Stored {
   try {
     const stored = JSON.parse(localStorage.getItem(AUTH_KEY) || 'null') as Stored | null;
     if (stored) {
+      stored.sessions = stored.sessions.map((a) => ({ ...a, proxy: a.proxy ?? '', mode: a.mode ?? 'token' }));
       // The active server's login expired while the app was closed: ask to log in to it again
       const lost = stored.sessions.find((a) => a.server === stored.active && !valid(a));
       if (lost) expiredServer = lost.server;
@@ -127,7 +207,7 @@ function readStored(): Stored {
     // Version 0.1 kept a single session
     const old = JSON.parse(localStorage.getItem(OLD_AUTH_KEY) || 'null') as Auth | null;
     localStorage.removeItem(OLD_AUTH_KEY);
-    if (old?.server && valid(old)) return { active: old.server, sessions: [old] };
+    if (old?.server && valid(old)) return { active: old.server, sessions: [{ ...old, proxy: '', mode: 'token' }] };
   } catch {
     // Storage unavailable or damaged: log in again
   }
@@ -217,17 +297,20 @@ export function serverColor(server: string): string {
 
 export const serverLabel = (server: string) => server.replace(/^https?:\/\//, '');
 
-export async function login(serverInput: string, username: string, password: string, allowSelfSigned: boolean): Promise<void> {
-  let server: string;
-  try {
-    server = normalizeServer(serverInput);
-  } catch {
-    throw new Error('That is not a valid server address.');
-  }
+export async function login(
+  serverInput: string,
+  username: string,
+  password: string,
+  allowSelfSigned: boolean,
+  proxyInput = '',
+): Promise<void> {
+  const server = parseServer(serverInput);
+  const proxy = normalizeProxy(proxyInput);
+  const conn: Connection = { server, allowSelfSigned, proxy };
   const expires = new Date(Date.now() + config.tokenHours * 3600_000).toISOString();
   let response: Response;
   try {
-    response = await request(server, allowSelfSigned, 'users/tokens/provision/', {
+    response = await request(conn, 'users/tokens/provision/', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
       body: JSON.stringify({
@@ -239,36 +322,83 @@ export async function login(serverInput: string, username: string, password: str
       }),
     });
   } catch (e) {
-    const text = String(e);
-    if (/certificate|ssl|tls/i.test(text)) {
-      throw new Error(`The server's certificate is not trusted. If it is self-signed, tick "Allow a self-signed certificate". (${text})`);
-    }
-    const hint =
-      server.startsWith('https:') && !allowSelfSigned
-        ? ' If the server uses a self-signed certificate, tick "Allow a self-signed certificate".'
-        : '';
-    throw new Error(`Can't reach ${server}.${hint} (${text})`);
+    throw reachError(server, conn, e);
   }
-  if (response.status === 403 || response.status === 401) throw new Error('Wrong username or password.');
+  if (response.status === 403 || response.status === 401) {
+    throw new Error('Wrong username or password. (If this NetBox uses single sign-on, choose "Single sign-on".)');
+  }
   if (response.status === 404) throw new Error(`${server} does not look like NetBox (no API found).`);
   if (!response.ok) throw new Error(`NetBox answered ${response.status}.`);
   const data = await response.json();
   if (data.version !== 2 && !data.key) throw new Error('Unexpected answer from NetBox. NetBox 4.5 or newer is needed.');
   // NetBox 4.5+ (v2) tokens are "nbt_<key>.<token>" and use "Bearer"; older ones are a plain key with "Token"
   const token = data.version === 2 ? `Bearer nbt_${data.key}.${data.token}` : `Token ${data.key}`;
-  rememberServer({ server, username, allowSelfSigned });
-  const auth: Auth = {
+  rememberServer({ server, username, allowSelfSigned, auth: 'password', proxy });
+  addSession({
     server,
     allowSelfSigned,
+    proxy,
+    mode: 'token',
     token,
     expires: data.expires || expires,
     username,
     displayName: data.user?.display || username,
+  });
+}
+
+interface SsoSession {
+  cookie: string;
+  username: string | null;
+}
+
+/**
+ * Single sign-on: NetBox's login page opens in a separate window (through the proxy, if set); the user signs in
+ * there, e.g. with Keycloak. Resolves when signed in; rejects when the window is closed.
+ */
+export async function loginSso(serverInput: string, allowSelfSigned: boolean, proxyInput = ''): Promise<void> {
+  if (!isTauri) throw new Error('Single sign-on only works in the app.');
+  const server = parseServer(serverInput);
+  const proxy = normalizeProxy(proxyInput);
+  const conn: Connection = { server, allowSelfSigned, proxy };
+  // Check that NetBox is reachable first, for a clear message instead of an empty sign-in window
+  try {
+    await request(conn, 'status/', { method: 'GET' });
+  } catch (e) {
+    throw reachError(server, conn, e);
+  }
+  const session = await invoke<SsoSession>('sso_login', { server, proxy: proxy || null, allowSelfSigned });
+  const auth: Auth = {
+    server,
+    allowSelfSigned,
+    proxy,
+    mode: 'session',
+    cookie: session.cookie,
+    token: '',
+    // The app forgets the session after the same time as a password login (NetBox may end it sooner)
+    expires: new Date(Date.now() + config.tokenHours * 3600_000).toISOString(),
+    username: session.username ?? '',
+    displayName: session.username ?? 'single sign-on',
   };
+  // The session must work for the API
+  const check = await request(auth, 'status/', { method: 'GET' });
+  if (!check.ok) throw new Error(`Signed in, but NetBox's API refused the session (${check.status}).`);
+  rememberServer({ server, username: auth.username, allowSelfSigned, auth: 'sso', proxy });
+  addSession(auth);
+}
+
+function parseServer(input: string): string {
+  try {
+    return normalizeServer(input);
+  } catch {
+    throw new Error('That is not a valid server address.');
+  }
+}
+
+function addSession(auth: Auth) {
   adding = false;
   expiredServer = null;
   // Logging in to a server again replaces its session
-  save({ active: server, sessions: [...stored.sessions.filter((a) => a.server !== server), auth] });
+  save({ active: auth.server, sessions: [...stored.sessions.filter((a) => a.server !== auth.server), auth] });
 }
 
 /**
@@ -276,11 +406,23 @@ export async function login(serverInput: string, username: string, password: str
  * valid in NetBox until it expires: being read-only, it may not delete itself.
  */
 export function logout(server = stored.active) {
+  endSessions(stored.sessions.filter((a) => a.server === server));
   save({ ...stored, sessions: stored.sessions.filter((a) => a.server !== server) });
 }
 
 export function logoutAll() {
+  endSessions(stored.sessions);
   save({ active: null, sessions: [] });
+}
+
+/** Single sign-on sessions are also ended in NetBox (tokens can't be: they expire). */
+function endSessions(sessions: Auth[]) {
+  for (const a of sessions) {
+    if (a.mode !== 'session' || !isTauri) continue;
+    invoke('session_logout', { server: a.server, cookie: a.cookie ?? '', proxy: a.proxy || null, allowSelfSigned: a.allowSelfSigned }).catch(
+      () => undefined,
+    );
+  }
 }
 
 /** The active session's token expired or was removed in NetBox: ask to log in to it again. */
@@ -329,8 +471,8 @@ export async function api<T>(path: string, params?: Params): Promise<T> {
   checkExpiry();
   const auth = getAuth();
   if (!auth) throw new ApiError(401, 'Not logged in');
-  const response = await request(auth.server, auth.allowSelfSigned, `${path}${query(params)}`, {
-    headers: { Authorization: auth.token, Accept: 'application/json' },
+  const response = await request(auth, `${path}${query(params)}`, {
+    headers: auth.mode === 'session' ? { Accept: 'application/json' } : { Authorization: auth.token, Accept: 'application/json' },
   });
   if (!response.ok) {
     let detail = response.statusText;
@@ -340,7 +482,9 @@ export async function api<T>(path: string, params?: Params): Promise<T> {
       // Not JSON
     }
     // An expired or removed token: back to the login page
-    if ((response.status === 401 || response.status === 403) && /token/i.test(detail)) sessionLost(auth.server);
+    // An expired or removed token, or an ended single sign-on session: log in to that server again
+    const lost = auth.mode === 'session' ? /credentials|authenticat|session/i : /token/i;
+    if ((response.status === 401 || response.status === 403) && lost.test(detail)) sessionLost(auth.server);
     throw new ApiError(response.status, detail);
   }
   return response.json();

@@ -13,6 +13,19 @@ to NetBox in [hello-world](https://github.com/janmartijnm/hello-world)
 - **Log in to any NetBox**: type the server address (`netbox.example.com` or
   `https://netbox.example.com:8443`) with your NetBox username and password.
   Recently used servers are listed for one click.
+- **Per instance: how to sign in, and how to reach it.** On the login screen
+  each NetBox instance gets its own settings, remembered under *Saved NetBox
+  instances*:
+  - **Password**: NetBox username and password (read-only API token, see
+    Security).
+  - **Single sign-on** (e.g. Keycloak): NetBox's own login page opens in a
+    separate window; sign in there as usual (click your SSO button, e.g.
+    *Keycloak*). The window closes by itself when you are signed in.
+  - **SOCKS5 proxy** (optional, `host:port`): for a NetBox that is only
+    reachable through a proxy. *Everything* for that instance then goes
+    through the proxy: the sign-in window (NetBox and Keycloak pages) and all
+    data. Host names are resolved by the proxy, so names that only exist
+    behind it work.
 - **Several NetBox instances at once**: the box at the top of the sidebar shows
   the NetBox you are looking at (with a colour per server). Click it to switch
   to another one you are logged in to (no password needed), to sign out of one,
@@ -32,7 +45,7 @@ to NetBox in [hello-world](https://github.com/janmartijnm/hello-world)
 Sections for plugins that a server doesn't have, or that you may not see, are
 hidden.
 
-## Install (macOS 11 or newer, Apple Silicon or Intel)
+## Install (macOS 14 Sonoma or newer, Apple Silicon or Intel)
 
 1. Download the `.dmg`:
    - a released version: the repository's **Releases** page, or
@@ -47,9 +60,20 @@ hidden.
 
 ## Security
 
-- **Read-only**: at login the app asks NetBox for a personal API token that
-  can only read (`write_enabled: false`) and expires after 8 hours. Nothing can
-  be changed through the app, also not by administrators.
+- **Read-only**:
+  - *Password login*: the app asks NetBox for a personal API token that can
+    only read (`write_enabled: false`) and expires after 8 hours. NetBox
+    itself refuses any change made with it.
+  - *Single sign-on*: there is no password to get such a token with, so the
+    app uses the NetBox session from the sign-in window. NetBox would allow
+    changes with a session, so the app makes them impossible itself: the
+    session cookie is only used by the app's native code
+    (`src-tauri/src/sso.rs`), which can only send GET requests to that
+    NetBox's API; the app's pages can't send the cookie anywhere (browsers and
+    Tauri's HTTP client refuse a Cookie header). The app forgets the session
+    after 8 hours, and **Sign out** also ends it in NetBox.
+
+  Nothing can be changed through the app, also not by administrators.
 - **Your NetBox permissions apply**: you see exactly what your NetBox account
   may see.
 - The password is only sent to NetBox to get the token and is not stored. The
@@ -65,6 +89,15 @@ hidden.
   server) skips that check for one server: use it only for a server you trust,
   on a network you trust. Plain `http://` also works, but then the password and
   token travel unencrypted.
+- **Single sign-on window**: a private window (nothing is kept after it
+  closes). It shows the real NetBox and Keycloak pages, so it can't check
+  certificates more loosely: a self-signed certificate must be trusted in the
+  macOS Keychain for single sign-on (the *Allow a self-signed certificate*
+  option only applies to the app's data requests).
+- **Limitations**: one login per NetBox address at a time (signing in again,
+  with another method, replaces it). *Open in NetBox* opens your normal
+  browser, which does not use the instance's proxy: for a NetBox behind a
+  proxy, set the proxy in that browser (or a browser profile) as well.
 - The app only asks macOS for what it needs: network requests, opening links
   in the browser, and writing the CSV file you choose
   (`src-tauri/capabilities/default.json`).
@@ -74,7 +107,10 @@ hidden.
 - `src/`: the screens (React + TypeScript, built with Vite).
 - `src-tauri/`: the app shell ([Tauri 2](https://tauri.app), Rust). It shows
   the screens in macOS's own WebKit, and its HTTP client makes the requests to
-  NetBox, so NetBox needs no CORS settings.
+  NetBox (through the instance's SOCKS5 proxy, if set), so NetBox needs no CORS
+  settings. `src-tauri/src/sso.rs` has the single sign-on window and the
+  read-only session requests. macOS 14 is needed for proxies in the sign-in
+  window.
 - `.github/workflows/build.yml`: builds a universal `.dmg` on GitHub's Mac
   runners for every push to `main`; a tag like `v0.2.0` also publishes a
   release.

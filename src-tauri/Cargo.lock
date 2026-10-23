@@ -2263,14 +2263,18 @@ dependencies = [
 
 [[package]]
 name = "netbox-explorer"
-version = "0.2.0"
+version = "0.3.0"
 dependencies = [
+ "reqwest 0.12.28",
+ "serde",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-fs",
  "tauri-plugin-http",
  "tauri-plugin-opener",
+ "tokio",
+ "url",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 [package]
 name = "netbox-explorer"
-version = "0.2.0"
+version = "0.3.0"
 description = "NetBox Explorer: a read-only desktop frontend for any NetBox instance"
 edition = "2021"
 publish = false
@@ -13,10 +13,17 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# macos-proxy: the single sign-on window can go through an instance's SOCKS5 proxy (macOS 14+)
+tauri = { version = "2", features = ["macos-proxy"] }
 # Requests to NetBox are made here (no CORS). native-tls uses the operating system's certificate store (the macOS
-# Keychain), so certificates trusted there work; dangerous-settings allows the per-server "self-signed" option.
-tauri-plugin-http = { version = "2", default-features = false, features = ["native-tls", "http2", "charset", "system-proxy", "gzip", "dangerous-settings"] }
+# Keychain), so certificates trusted there work; dangerous-settings allows the per-server "self-signed" option;
+# socks: per-instance SOCKS5 proxy.
+tauri-plugin-http = { version = "2", default-features = false, features = ["native-tls", "http2", "charset", "system-proxy", "gzip", "dangerous-settings", "socks"] }
+# Requests with a single sign-on session (src/sso.rs): GET only
+reqwest = { version = "0.12", default-features = false, features = ["native-tls", "http2", "charset", "gzip", "socks"] }
+tokio = { version = "1", features = ["sync"] }
+url = "2"
+serde = { version = "1", features = ["derive"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
