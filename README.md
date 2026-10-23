@@ -35,7 +35,8 @@ to NetBox in [hello-world](https://github.com/janmartijnm/hello-world)
 - **Search everything** (Ctrl+K / ⌘K or `/`): sites, devices, interfaces,
   assets, IP addresses, services, prefixes and circuits.
 - **Sites** with filters, table or map; **Devices** with interfaces, IPs,
-  connections and services; **Services** (Service Management plugin);
+  connections and services; **Interfaces** of all devices (with IPs,
+  connections, VLAN, VRF and service); **Services** (Service Management plugin);
   **Inventory** (netbox-inventory plugin assets).
 - **Export CSV** of any filtered list, saved with the Mac "Save as" dialog
   (`;`-separated so Excel with Dutch settings opens it in columns).

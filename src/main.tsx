@@ -12,6 +12,7 @@ import { Assets } from './pages/Assets';
 import { DeviceDetail } from './pages/DeviceDetail';
 import { Devices } from './pages/Devices';
 import { Home } from './pages/Home';
+import { Interfaces } from './pages/Interfaces';
 import { Login } from './pages/Login';
 import { NotFound } from './pages/NotFound';
 import { SearchPage } from './pages/Search';
@@ -65,6 +66,7 @@ function App() {
           <Route path="sites/:id" element={<SiteDetail />} />
           <Route path="devices" element={<Devices />} />
           <Route path="devices/:id" element={<DeviceDetail />} />
+          <Route path="interfaces" element={<Interfaces />} />
           <Route path="services" element={<Services />} />
           <Route path="services/:id" element={<ServiceDetail />} />
           <Route path="assets" element={<Assets />} />

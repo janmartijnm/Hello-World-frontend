@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router';
 import { useQueries } from '@tanstack/react-query';
-import { Boxes, ExternalLink, Handshake, LayoutDashboard, LogOut, MapPin, Menu, Moon, Search, Server, Sun, X } from 'lucide-react';
+import { Boxes, Cable, ExternalLink, Handshake, LayoutDashboard, LogOut, MapPin, Menu, Moon, Search, Server, Sun, X } from 'lucide-react';
 
 import { api, ApiError, config, getAuthState, logout, logoutAll, onAuthChange, serverLabel, type Page } from '../api';
 import { InstanceSwitcher } from './InstanceSwitcher';
@@ -23,6 +23,7 @@ const NAV = [
   { to: '/', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/sites', label: 'Sites', icon: MapPin, path: 'dcim/sites/' },
   { to: '/devices', label: 'Devices', icon: Server, path: 'dcim/devices/' },
+  { to: '/interfaces', label: 'Interfaces', icon: Cable, path: 'dcim/interfaces/' },
   { to: '/services', label: 'Services', icon: Handshake, path: 'plugins/service-management/services/' },
   { to: '/assets', label: 'Inventory', icon: Boxes, path: 'plugins/inventory/assets/' },
 ];

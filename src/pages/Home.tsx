@@ -10,7 +10,7 @@ import type { Site } from '../types';
 const STATS = [
   { label: 'Sites', path: 'dcim/sites/', to: '/sites', icon: MapPin },
   { label: 'Devices', path: 'dcim/devices/', to: '/devices', icon: Server },
-  { label: 'Interfaces', path: 'dcim/interfaces/', to: null, icon: Cable },
+  { label: 'Interfaces', path: 'dcim/interfaces/', to: '/interfaces', icon: Cable },
   { label: 'Services', path: 'plugins/service-management/services/', to: '/services', icon: Handshake },
 ];
 
