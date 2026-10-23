@@ -17,6 +17,9 @@ permissions:
 jobs:
   macos:
     runs-on: macos-latest
+    # Stop a run that hangs (e.g. a slow first notarization by Apple) instead of using up Actions minutes; on a
+    # private repository every macOS minute counts as 10. Apple keeps checking a submission after a stop.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
