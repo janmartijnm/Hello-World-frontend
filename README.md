@@ -20,7 +20,11 @@ to NetBox in [hello-world](https://github.com/janmartijnm/hello-world)
     Security).
   - **Single sign-on** (e.g. Keycloak): NetBox's own login page opens in a
     separate window; sign in there as usual (click your SSO button, e.g.
-    *Keycloak*). The window closes by itself when you are signed in.
+    *Keycloak*). The window closes by itself when you are signed in. Before
+  the window opens, the app checks that NetBox and the sign-on server can be
+  reached from it (through the proxy, with a trusted certificate) and
+  otherwise says what is wrong; a page in the window that still doesn't load
+  is explained there after 25 seconds (macOS would show an empty window).
   - **SOCKS5 proxy** (optional, `host:port`): for a NetBox that is only
     reachable through a proxy. *Everything* for that instance then goes
     through the proxy: the sign-in window (NetBox and Keycloak pages) and all
@@ -94,7 +98,8 @@ hidden.
   closes). It shows the real NetBox and Keycloak pages, so it can't check
   certificates more loosely: a self-signed certificate must be trusted in the
   macOS Keychain for single sign-on (the *Allow a self-signed certificate*
-  option only applies to the app's data requests).
+  option only applies to the app's data requests). NetBox and Keycloak on
+  plain `http://` work in the window too.
 - **Limitations**: one login per NetBox address at a time (signing in again,
   with another method, replaces it). *Open in NetBox* opens your normal
   browser, which does not use the instance's proxy: for a NetBox behind a
