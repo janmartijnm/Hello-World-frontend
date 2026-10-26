@@ -65,8 +65,8 @@ export function Home() {
       </div>
 
       <div className="grid-2-1">
-        <Card title="Sites on the map" flush>
-          {sites.error ? <ErrorState error={sites.error} /> : sites.data ? <SiteMap sites={sites.data} height={460} /> : <Spinner />}
+        <Card title="Sites by status" flush>
+          {sites.error ? <ErrorState error={sites.error} /> : sites.data ? <SiteMap sites={sites.data} height={460} colorBy="status" /> : <Spinner />}
         </Card>
         <Card title="Sites per site group">
           {sites.data && (

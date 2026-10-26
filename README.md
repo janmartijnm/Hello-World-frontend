@@ -38,7 +38,8 @@ to NetBox in [hello-world](https://github.com/janmartijnm/hello-world)
   the app asks to log in to that server again or to continue with another.
 - **Search everything** (Ctrl+K / ⌘K or `/`): sites, devices, interfaces,
   assets, IP addresses, services, prefixes and circuits.
-- **Sites** with filters, table or map; **Devices** with interfaces, IPs,
+- **Overview** with a map of all sites colored by status (planned, staging,
+  active, decommissioning, retired); **Sites** with filters, table or map; **Devices** with interfaces, IPs,
   connections and services; **Interfaces** of all devices (with IPs,
   connections, VLAN, VRF and service); **Services** (Service Management plugin);
   **Inventory** (netbox-inventory plugin assets).
